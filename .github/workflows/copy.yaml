@@ -1,0 +1,88 @@
+name: Copy PR to Private Repo and Create PR
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+
+jobs:
+  copy_code:
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      statuses: read
+      actions: read
+      repository-projects: read
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Extract PR Info
+        id: pr_info
+        run: |
+          echo "PR_BRANCH=${{ github.event.pull_request.head.ref }}" >> $GITHUB_ENV
+          echo "PR_AUTHOR=${{ github.event.pull_request.user.login }}" >> $GITHUB_ENV
+          echo "PR_TITLE=${{ github.event.pull_request.title }}" >> $GITHUB_ENV
+          echo "PR_NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+          
+          echo "SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 최근 2개의 커밋을 가져옴
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Get Commit Author Email
+        run: |
+          PR_AUTHOR_EMAIL=$(git log -1 --pretty=format:'%ae')
+          echo "Commit Author Email: $PR_AUTHOR_EMAIL"
+          echo "PR_AUTHOR_EMAIL=$PR_AUTHOR_EMAIL" >> $GITHUB_ENV
+
+      - name: Add Private Repo source
+        run: |
+          NEW_BRANCH="review/${{ env.PR_AUTHOR }}-${{ env.PR_BRANCH }}-${{ env.SHORT_SHA }}"
+          echo "NEW_BRANCH=$NEW_BRANCH" >> $GITHUB_ENV
+          git checkout -b $NEW_BRANCH
+
+          git remote add submit https://x-access-token:${{ secrets.REVIEW_REPO_PAT }}@github.com/Murple-AI/frontend-mission-submit.git
+
+          git config --global user.email "${{ env.PR_AUTHOR_EMAIL}}"
+          git config --global user.name "${{ env.PR_AUTHOR }}"
+
+          # 원본 PR 브랜치 내용을 private repo로 push
+          git push -u submit $NEW_BRANCH 
+        env:
+          GITHUB_TOKEN: ${{ secrets.REVIEW_REPO_PAT }}
+
+      - name: Create PR in Private Repo
+        run: |
+          # 이 작업을 위해서는 미리 두 리포지토리에 공통 커밋이 있어야 함
+
+          gh pr create \
+            --repo Murple-AI/frontend-mission-submit \
+            --base main \
+            --head $NEW_BRANCH \
+            --title "[Review] ${{ env.PR_AUTHOR }} / ${{ env.PR_AUTHOR_EMAIL }} - ${{ env.PR_TITLE }}" \
+            --body-file <(echo "${{ github.event.pull_request.body }} (Original PR: #${{ env.PR_NUMBER }})")
+        env:
+          GITHUB_TOKEN: ${{ secrets.REVIEW_REPO_PAT }}
+
+      - name: Close and Delete Original PR
+        run: |
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+
+          # GraphQL: Resource not accessible by integration (repository.pullRequest.projectCards.nodes)
+          # 위와 같은 에러는 보통 권한 문제로 인해 발생
+          # permissions 설정을 확인하고, 권한이 없는 경우에는 토큰을 확인
+          
+          gh pr edit ${{ env.PR_NUMBER }} --base temp-branch
+          gh pr edit ${{ env.PR_NUMBER }} --title "[Closed]" --body " "
+          gh pr edit ${{ env.PR_NUMBER }} --base main
+          gh pr close ${{ env.PR_NUMBER }} --delete-branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
