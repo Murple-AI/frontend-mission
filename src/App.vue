@@ -22,8 +22,8 @@
     </ul>
 
     <div style="margin-top: 16px; display: flex; gap: 8px">
-      <button @click="createFile">Create File</button>
-      <button @click="createFolder">Create Folder</button>
+      <button @click="createFile">새 파일</button>
+      <button @click="createFolder">새 폴더</button>
     </div>
   </div>
 </template>
