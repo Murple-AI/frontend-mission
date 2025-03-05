@@ -18,13 +18,13 @@
         @click="createFile"
         class="rounded bg-blue-500 px-4 py-2 text-white hover:bg-blue-600"
       >
-        Create File
+        새 파일
       </button>
       <button
         @click="createFolder"
         class="rounded bg-green-500 px-4 py-2 text-white hover:bg-green-600"
       >
-        Create Folder
+        새 폴더
       </button>
     </div>
   </div>
