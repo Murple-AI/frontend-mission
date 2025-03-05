@@ -12,5 +12,6 @@ const app = createApp(App);
 
 prepareApp().then(() => {
   app.use(VueQueryPlugin, { queryClient });
+  // test
   app.mount("#app");
 });
